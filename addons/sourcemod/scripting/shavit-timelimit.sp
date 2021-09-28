@@ -49,6 +49,8 @@ ConVar mp_roundtime = null;
 Convar gCV_Config = null;
 Convar gCV_DefaultLimit = null;
 Convar gCV_DynamicTimelimits = null;
+Convar gCV_MinimumLimit = null;
+Convar gCV_MaximumLimit = null;
 Convar gCV_ForceMapEnd = null;
 Convar gCV_MinimumTimes = null;
 Convar gCV_PlayerAmount = null;
@@ -56,6 +58,8 @@ Convar gCV_Style = null;
 Convar gCV_GameStartFix = null;
 Convar gCV_InstantMapChange = null;
 Convar gCV_Enabled = null;
+
+char g_cPrefix[32];
 
 // misc cache
 bool gB_BlockRoundEndEvent = false;
@@ -107,6 +111,8 @@ public void OnPluginStart()
 	gCV_Config = new Convar("shavit_timelimit_config", "1", "Enables the following game settings:\n\"mp_do_warmup_period\" \"0\"\n\"mp_freezetime\" \"0\"\n\"mp_ignore_round_win_conditions\" \"1\"", 0, true, 0.0, true, 1.0);
 	gCV_DefaultLimit = new Convar("shavit_timelimit_default", "60.0", "Default timelimit to use in case there isn't an average.", 0);
 	gCV_DynamicTimelimits = new Convar("shavit_timelimit_dynamic", "1", "Use dynamic timelimits.\n0 - Disabled\n1 - Enabled", 0, true, 0.0, true, 1.0);
+	gCV_MinimumLimit = new Convar("shavit_timelimit_minimum", "20.0", "Minimum timelimit to use.\nREQUIRES \"shavit_timelimit_dynamic\" TO BE ENABLED!", 0);
+	gCV_MaximumLimit = new Convar("shavit_timelimit_maximum", "0.0", "Maximum timelimit to use.\nREQUIRES \"shavit_timelimit_dynamic\" TO BE ENABLED!\n0 - No maximum", 0);
 	gCV_ForceMapEnd = new Convar("shavit_timelimit_forcemapend", "1", "Force the map to end after the timelimit.\n0 - Disabled\n1 - Enabled", 0, true, 0.0, true, 1.0);
 	gCV_MinimumTimes = new Convar("shavit_timelimit_minimumtimes", "5", "Minimum amount of times required to calculate an average.\nREQUIRES \"shavit_timelimit_dynamic\" TO BE ENABLED!", 0, true, 5.0);
 	gCV_PlayerAmount = new Convar("shavit_timelimit_playertime", "25", "Limited amount of times to grab from the database to calculate an average.\nREQUIRES \"shavit_timelimit_dynamic\" TO BE ENABLED!\nSet to 0 to have it \"unlimited\".", 0);
@@ -254,8 +260,29 @@ public void SQL_GetMapTimes(Database db, DBResultSet results, const char[] error
 		{
 			fAverage = 120.0;
 		}
-
-		SetLimit(RoundToNearest(fAverage));
+		
+		if(fAverage <= gCV_MinimumLimit.IntValue)
+		{
+			SetLimit(gCV_MinimumLimit.IntValue);
+		}
+		
+		else if(gCV_MaximumLimit.IntValue >= gCV_MinimumLimit.IntValue)
+		{
+			if(fAverage >= gCV_MaximumLimit.IntValue)
+			{
+				SetLimit(gCV_MaximumLimit.IntValue);
+			}
+			
+			else
+			{
+				SetLimit(RoundToNearest(fAverage));
+			}
+		}
+		
+		else
+		{
+			SetLimit(RoundToNearest(fAverage));
+		}
 	}
 
 	else
@@ -266,11 +293,11 @@ public void SQL_GetMapTimes(Database db, DBResultSet results, const char[] error
 
 void SetLimit(int time)
 {
-	mp_timelimit.IntValue = time;
+	mp_timelimit.IntValue = time / 5 * 5;
 
 	if(mp_roundtime != null)
 	{
-		mp_roundtime.IntValue = time;
+		mp_roundtime.IntValue = time / 5 * 5;
 	}
 }
 
@@ -304,12 +331,7 @@ public Action Timer_PrintToChat(Handle timer)
 			{
 				Call_StartForward(gH_Forwards_OnCountdownStart);
 				Call_Finish();
-			}
-
-			if (1 <= timeleft <= 3)
-			{
-				Shavit_StopChatSound();
-				Shavit_PrintToChatAll("%d..", timeleft);
+				Shavit_PrintToChatAll("%sMap changing in 5 seconds..", g_cPrefix);
 			}
 
 			if (timeleft == 1)
