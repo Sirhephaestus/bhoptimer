@@ -204,6 +204,7 @@ public void OnPluginStart()
 	RegAdminCmd("sm_extendmap", Command_Extend, ADMFLAG_CHANGEMAP, "Admin command for extending map");
 	RegAdminCmd("sm_forcemapvote", Command_ForceMapVote, ADMFLAG_CHANGEMAP, "Admin command for forcing the end of map vote");
 	RegAdminCmd("sm_reloadmaplist", Command_ReloadMaplist, ADMFLAG_CHANGEMAP, "Admin command for forcing maplist to be reloaded");
+	RegAdminCmd("sm_reloadmap", Command_ReloadMap, ADMFLAG_CHANGEMAP, "Admin command for reloading current map");
 
 	RegAdminCmd("sm_loadunzonedmap", Command_LoadUnzonedMap, ADMFLAG_ROOT, "Loads the next map from the maps folder that is unzoned.");
 
@@ -432,9 +433,9 @@ public Action Timer_OnMapTimeLeftChanged(Handle Timer)
 			{
 				case (10 * 60) - 3:
 				{
-					//PrintToChatAll("%s10 minutes until map vote", g_cPrefix);
+					PrintToChatAll("%s10 minutes until map vote", g_cPrefix);
 				}
-				case 5:
+				case 60, 30, 5:
 				{
 					PrintToChatAll("%s%d seconds until map vote", g_cPrefix, mapvoteTime);
 				}
@@ -992,7 +993,7 @@ public int Handler_MapVoteMenu(Menu menu, MenuAction action, int param1, int par
 }
 
 // extends map while also notifying players and setting plugin data
-void ExtendMap(int time = 0)
+void ExtendMap(int client, int time)
 {
 	if(time == 0)
 	{
@@ -1000,7 +1001,7 @@ void ExtendMap(int time = 0)
 	}
 
 	ExtendMapTimeLimit(time);
-	PrintToChatAll("%sThe map was extended for %d minutes", g_cPrefix, time / 60);
+	PrintToChatAll("%s%N extended the map by %d minutes", g_cPrefix, client, time / 60);
 
 	//g_bMapVoteStarted = false;
 	//g_bMapVoteFinished = false;
@@ -1294,6 +1295,15 @@ public Action Timer_ChangeMap(Handle timer, DataPack data)
 	ForceChangeLevel(map, "RTV Mapvote");
 }
 
+public Action Timer_ReloadMap(Handle timer, DataPack data)
+{
+	char map[PLATFORM_MAX_PATH];
+	data.Reset();
+	data.ReadString(map, sizeof(map));
+
+	ForceChangeLevel(g_cMapName, "sm_reloadmap");
+}
+
 // ugh
 public Action Timer_ChangeMap222(Handle timer, DataPack data)
 {
@@ -1319,7 +1329,7 @@ public Action Command_Extend(int client, int args)
 		extendtime = RoundFloat(g_cvMapVoteExtendTime.FloatValue * 60.0);
 	}
 
-	ExtendMap(extendtime);
+	ExtendMap(client, extendtime);
 
 	return Plugin_Handled;
 }
@@ -1349,15 +1359,23 @@ public Action Command_Nominate(int client, int args)
 {
 	if(args < 1)
 	{
-		if (g_cvEnhancedMenu.BoolValue)
+		if(g_bMapVoteStarted || g_bMapVoteFinished)
 		{
-			OpenEnhancedMenu(client);
+			ReplyToCommand(client, "%sMap vote already %s", g_cPrefix, (g_bMapVoteStarted) ? "initiated" : "finished");
+			return Plugin_Handled;
 		}
 		else
 		{
-			OpenNominateMenu(client);
+			if (g_cvEnhancedMenu.BoolValue)
+			{
+				OpenEnhancedMenu(client);
+			}
+			else
+			{
+				OpenNominateMenu(client);
+			}
+			return Plugin_Handled;
 		}
-		return Plugin_Handled;
 	}
 
 	char mapname[PLATFORM_MAX_PATH];
@@ -1415,7 +1433,13 @@ public Action Command_UnNominate(int client, int args)
 	{
 		g_fLastNominateTime[client] = GetEngineTime();
 	}
-
+	
+	if(g_bMapVoteStarted || g_bMapVoteFinished)
+	{
+		ReplyToCommand(client, "%sMap vote already %s", g_cPrefix, (g_bMapVoteStarted) ? "initiated" : "finished");
+		return Plugin_Handled;
+	}
+	
 	if(g_cNominatedMap[client][0] == '\0')
 	{
 		ReplyToCommand(client, "%sYou haven't nominated a map", g_cPrefix);
@@ -1944,6 +1968,18 @@ public Action Command_LoadUnzonedMap(int client, int args)
 	char sQuery[256];
 	FormatEx(sQuery, sizeof(sQuery), "SELECT DISTINCT map FROM %smapzones;", g_cSQLPrefix);
 	g_hDatabase.Query(FindUnzonedMapCallback, sQuery, 0, DBPrio_Normal);
+	return Plugin_Handled;
+}
+
+public Action Command_ReloadMap(int client, int args)
+{
+	char map[PLATFORM_MAX_PATH];
+	
+	PrintToChatAll("%sReloading current map..", g_cPrefix);
+	DataPack dp;
+	CreateDataTimer(MapChangeDelay(), Timer_ReloadMap, dp);
+	dp.WriteString(map);
+	
 	return Plugin_Handled;
 }
 
